@@ -10,7 +10,7 @@ if 'darwin' == os.sys.platform:
     env.Append(CPPPATH=['/opt/local/include'])
     env.Append(LIBPATH=['/opt/local/lib'])
 
-env.Append(CPPPATH=['../..', '../mongo/'])
+env.Append(CPPPATH=['../', '../mongo/'])
 env.Append(LIBPATH=['../mongo'])
 
 conf = Configure( env )
