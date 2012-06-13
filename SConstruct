@@ -11,13 +11,15 @@ if 'darwin' == os.sys.platform:
     env.Append(LIBPATH=['/opt/local/lib'])
 
 env.Append(CPPPATH=['../', '../mongo/'])
-env.Append(LIBPATH=['../mongo'])
+env.Append(LIBPATH=['../mongo', '/usr/lib64'])
 
 conf = Configure( env )
 libs = [ "mongoclient",  "boost_thread" , "boost_filesystem" , 'boost_program_options', 'boost_system']
 
 def checkLib( lib ):
     if lib.startswith('boost_'):
+        if conf.CheckLib( lib + '-mt' ):
+            return True
         if conf.CheckLib( lib + '_mt' ):
             return True
 
