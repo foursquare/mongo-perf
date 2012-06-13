@@ -19,15 +19,15 @@ using namespace mongo;
 
 
 namespace {
-    const int thread_nums[] = {1,2,4,5,8,10};
-    const int max_threads = 10;
+    const int thread_nums[] = {10, 50, 75, 100, 175, 250};
+    const int max_threads = 1000;
     // Global connections
     DBClientConnection _conn[max_threads];
 
     bool multi_db = false;
 
-    const char* _db = "benchmarks";
-    const char* _coll = "collection";
+    const char* _db = "foursquare";
+    const char* _coll = "users";
     string ns[max_threads];
 
 
@@ -91,7 +91,7 @@ namespace {
         for (int t=0; t<max_threads; t++)
             getLastError(t);
     }
-    
+
 
     // passed in as argument
     int iterations;
@@ -112,7 +112,7 @@ namespace {
         virtual void reset(){
             test.reset();
         }
-        
+
         virtual string name(){
             //from mongo::regression::demangleName()
 #ifdef _WIN32
@@ -155,7 +155,7 @@ namespace {
                         endTime = boost::posix_time::microsec_clock::universal_time();
                         double micros = (endTime-startTime).total_microseconds() / 1000000.0;
 
-                        if (nthreads == 1) 
+                        if (nthreads == 1)
                             one_micros = micros;
 
                         results.append(BSONObjBuilder::numStr(nthreads),
@@ -189,6 +189,7 @@ namespace {
             }
     };
 
+/*
     void clearDB(){
         for (int i=0; i<max_threads; i++) {
             _conn[0].dropDatabase(_db + BSONObjBuilder::numStr(i));
@@ -197,8 +198,10 @@ namespace {
                 return;
         }
     }
+    */
 }
 
+/*
 namespace Overhead{
     // this tests the overhead of the system
     struct DoNothing{
@@ -344,7 +347,7 @@ namespace Update{
     };
     struct IncNoIndex : Base{
         void reset(){
-            clearDB(); 
+            clearDB();
             for (int i=0; i<100; i++)
                 insert(-1, BSON("_id" << i << "count" << 0));
         }
@@ -359,7 +362,7 @@ namespace Update{
     };
     struct IncWithIndex : Base{
         void reset(){
-            clearDB(); 
+            clearDB();
             ensureIndex(-1, BSON("count" << 1));
             for (int i=0; i<100; i++)
                 insert(-1, BSON("_id" << i << "count" << 0));
@@ -375,7 +378,7 @@ namespace Update{
     };
     struct IncNoIndex_QueryOnSecondary : Base{
         void reset(){
-            clearDB(); 
+            clearDB();
             ensureIndex(-1, BSON("i" << 1));
             for (int i=0; i<100; i++)
                 insert(-1, BSON("_id" << i << "i" << i << "count" << 0));
@@ -391,7 +394,7 @@ namespace Update{
     };
     struct IncWithIndex_QueryOnSecondary : Base{
         void reset(){
-            clearDB(); 
+            clearDB();
             ensureIndex(-1, BSON("count" << 1));
             ensureIndex(-1, BSON("i" << 1));
             for (int i=0; i<100; i++)
@@ -644,10 +647,26 @@ namespace Queries{
     };
 
 }
+*/
+
+namespace FSTests {
+    struct LookupUserByID {
+        void reset() { }
+
+        void run(int t, int n){
+            int base = t * (iterations/n);
+            for (int i=0; i < iterations / n; i++){
+                findOne(t, BSON("_id" << base + i));
+            }
+        }
+    };
+}
 
 namespace{
     struct TheTestSuite : TestSuite{
         TheTestSuite(){
+          add<FSTests::LookupUserByID>();
+        /*
             //add< Overhead::DoNothing >();
 
             add< Insert::Empty >();
@@ -663,7 +682,7 @@ namespace{
             add< Insert::JustNumIndexedBefore >();
             add< Insert::JustNumIndexedAfter >();
             //add< Insert::NumAndID >();
-            
+
             add< Update::IncNoIndexUpsert >();
             add< Update::IncWithIndexUpsert >();
             add< Update::IncNoIndex >();
@@ -684,20 +703,21 @@ namespace{
             //add< Queries::TwoIntsBothGood >();
             //add< Queries::TwoIntsFirstGood >();
             //add< Queries::TwoIntsSecondGood >();
+       */
         }
     } theTestSuite;
 }
 
 int main(int argc, const char **argv){
     if (argc < 3){
-        cout << argv[0] << " [port] [iterations] [multidb (1 or 0)]" << endl;
+        cout << argv[0] << " [host:port] [iterations] [multidb (1 or 0)]" << endl;
         return 1;
     }
 
     for (int i=0; i < max_threads; i++){
         ns[i] = _db + BSONObjBuilder::numStr(i) + '.' + _coll;
         string errmsg;
-        if ( ! _conn[i].connect( string( "127.0.0.1:" ) + argv[1], errmsg ) ) {
+        if ( ! _conn[i].connect( string( argv[1] ), errmsg ) ) {
             cout << "couldn't connect : " << errmsg << endl;
             return 1;
         }
