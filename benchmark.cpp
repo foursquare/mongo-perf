@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <vector>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/date_time/posix_time/posix_time_duration.hpp>
 #include <boost/interprocess/sync/scoped_lock.hpp>
 #include <boost/signals2/mutex.hpp>
 #include <boost/bind.hpp>
@@ -659,7 +660,7 @@ namespace FSTests {
 
         void run(int threadId, int seconds){
             boost::posix_time::ptime startTime = boost::posix_time::microsec_clock::universal_time();
-            boost::posix_time::ptime endTime = startTime + (seconds * 1000 * 1000);
+            boost::posix_time::ptime endTime = startTime + boost::posix_time::seconds(seconds);
             int iters = 0;
             while (boost::posix_time::microsec_clock::universal_time() < endTime) {
                 findOne(threadId, BSON("_id" << threadId + iters));
