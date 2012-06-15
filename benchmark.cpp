@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <vector>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/interprocess/sync/scoped_lock.hpp>
+#include <boost/signals2/mutex.hpp>
 #include <boost/bind.hpp>
 #include <boost/foreach.hpp>
 
@@ -94,10 +96,13 @@ namespace {
 
 
     // passed in as argument
+    int seconds;
+    // protect iterations with _mutex
+    boost::signals2::mutex _mutex;
     int iterations;
 
     struct TestBase{
-        virtual void run(int thread, int nthreads) = 0;
+        virtual void run(int threadId, int seconds) = 0;
         virtual void reset() = 0;
         virtual string name() = 0;
         virtual ~TestBase() {}
@@ -105,9 +110,9 @@ namespace {
 
     template <typename T>
     struct Test: TestBase{
-        virtual void run(int thread, int nthreads){
-            test.run(thread, nthreads);
-            getLastError(thread); //wait for operation to complete
+        virtual void run(int threadId, int seconds) {
+            test.run(threadId, seconds);
+            getLastError(threadId); //wait for operation to complete
         }
         virtual void reset(){
             test.reset();
@@ -148,10 +153,11 @@ namespace {
                     BSONObjBuilder results;
 
                     double one_micros;
+                    iterations = 0;
                     BOOST_FOREACH(int nthreads, thread_nums){
                         test->reset();
                         startTime = boost::posix_time::microsec_clock::universal_time();
-                        launch_subthreads(nthreads, test);
+                        launch_subthreads(nthreads, test, seconds);
                         endTime = boost::posix_time::microsec_clock::universal_time();
                         double micros = (endTime-startTime).total_microseconds() / 1000000.0;
 
@@ -160,6 +166,7 @@ namespace {
 
                         results.append(BSONObjBuilder::numStr(nthreads),
                                        BSON( "time" << micros
+                                          << "ops" << iterations
                                           << "ops_per_sec" << iterations / micros
                                           << "speedup" << one_micros / micros
                                           ));
@@ -175,15 +182,12 @@ namespace {
         private:
             vector<TestBase*> tests;
 
-            void launch_subthreads(int remaining, TestBase* test, int total=-1){ //total = remaining
-                if (!remaining) return;
+            void launch_subthreads(int threadId, TestBase* test, int seconds) {
+                if (!threadId) return;
 
-                if (total == -1)
-                    total = remaining;
+                boost::thread athread(boost::bind(&TestBase::run, test, threadId, seconds));
 
-                boost::thread athread(boost::bind(&TestBase::run, test, total-remaining, total));
-
-                launch_subthreads(remaining - 1, test, total);
+                launch_subthreads(threadId - 1, test, seconds);
 
                 athread.join();
             }
@@ -217,7 +221,7 @@ namespace Insert{
 
     struct Empty : Base{
         void run(int t, int n) {
-            for (int i=0; i < iterations / n; i++){
+            for (int i=0; i < seconds / n; i++){
                 insert(t, BSONObj());
             }
         }
@@ -226,7 +230,7 @@ namespace Insert{
     template <int BatchSize>
     struct EmptyBatched : Base{
         void run(int t, int n) {
-            for (int i=0; i < iterations / BatchSize / n; i++){
+            for (int i=0; i < seconds / BatchSize / n; i++){
                 vector<BSONObj> objs(BatchSize);
                 insert(t, objs);
             }
@@ -235,7 +239,7 @@ namespace Insert{
 
     struct EmptyCapped : Base{
         void run(int t, int n) {
-            for (int i=0; i < iterations / n; i++){
+            for (int i=0; i < seconds / n; i++){
                 insert(t, BSONObj());
             }
         }
@@ -251,7 +255,7 @@ namespace Insert{
 
     struct JustID : Base{
         void run(int t, int n) {
-            for (int i=0; i < iterations / n; i++){
+            for (int i=0; i < seconds / n; i++){
                 BSONObjBuilder b;
                 b << GENOID;
                 insert(t, b.obj());
@@ -261,8 +265,8 @@ namespace Insert{
 
     struct IntID : Base{
         void run(int t, int n) {
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 insert(t, BSON("_id" << base + i));
             }
         }
@@ -270,8 +274,8 @@ namespace Insert{
 
     struct IntIDUpsert : Base{
         void run(int t, int n) {
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 update(t, BSON("_id" << base + i), BSONObj(), true);
             }
         }
@@ -279,8 +283,8 @@ namespace Insert{
 
     struct JustNum : Base{
         void run(int t, int n) {
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 insert(t, BSON("x" << base + i));
             }
         }
@@ -289,8 +293,8 @@ namespace Insert{
     struct JustNumIndexedBefore : Base{
         void run(int t, int n) {
             ensureIndex(t, BSON("x" << 1));
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 insert(t, BSON("x" << base + i));
             }
         }
@@ -298,8 +302,8 @@ namespace Insert{
 
     struct JustNumIndexedAfter : Base{
         void run(int t, int n) {
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 insert(t, BSON("x" << base + i));
             }
             ensureIndex(t, BSON("x" << 1));
@@ -308,8 +312,8 @@ namespace Insert{
 
     struct NumAndID : Base{
         void run(int t, int n) {
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 BSONObjBuilder b;
                 b << GENOID;
                 b << "x" << base+i;
@@ -326,7 +330,7 @@ namespace Update{
 
     struct IncNoIndexUpsert : Base{
         void run(int t, int n) {
-            const int incs = iterations/n/100;
+            const int incs = seconds/n/100;
             for (int i=0; i<100; i++){
                 for (int j=0; j<incs; j++){
                     update(t, BSON("_id" << i), BSON("$inc" << BSON("count" << 1)), 1);
@@ -337,7 +341,7 @@ namespace Update{
     struct IncWithIndexUpsert : Base{
         void reset(){ clearDB(); ensureIndex(-1, BSON("count" << 1));}
         void run(int t, int n) {
-            const int incs = iterations/n/100;
+            const int incs = seconds/n/100;
             for (int i=0; i<100; i++){
                 for (int j=0; j<incs; j++){
                     update(t, BSON("_id" << i), BSON("$inc" << BSON("count" << 1)), 1);
@@ -352,7 +356,7 @@ namespace Update{
                 insert(-1, BSON("_id" << i << "count" << 0));
         }
         void run(int t, int n) {
-            const int incs = iterations/n/100;
+            const int incs = seconds/n/100;
             for (int i=0; i<100; i++){
                 for (int j=0; j<incs; j++){
                     update(t, BSON("_id" << i), BSON("$inc" << BSON("count" << 1)));
@@ -368,7 +372,7 @@ namespace Update{
                 insert(-1, BSON("_id" << i << "count" << 0));
         }
         void run(int t, int n) {
-            const int incs = iterations/n/100;
+            const int incs = seconds/n/100;
             for (int i=0; i<100; i++){
                 for (int j=0; j<incs; j++){
                     update(t, BSON("_id" << i), BSON("$inc" << BSON("count" << 1)));
@@ -384,7 +388,7 @@ namespace Update{
                 insert(-1, BSON("_id" << i << "i" << i << "count" << 0));
         }
         void run(int t, int n) {
-            const int incs = iterations/n/100;
+            const int incs = seconds/n/100;
             for (int i=0; i<100; i++){
                 for (int j=0; j<incs; j++){
                     update(t, BSON("i" << i), BSON("$inc" << BSON("count" << 1)));
@@ -401,7 +405,7 @@ namespace Update{
                 insert(-1, BSON("_id" << i << "i" << i << "count" << 0));
         }
         void run(int t, int n) {
-            const int incs = iterations/n/100;
+            const int incs = seconds/n/100;
             for (int i=0; i<100; i++){
                 for (int j=0; j<incs; j++){
                     update(t, BSON("i" << i), BSON("$inc" << BSON("count" << 1)));
@@ -415,14 +419,14 @@ namespace Queries{
     struct Empty{
         void reset() {
             clearDB();
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSONObj());
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int chunk = iterations / n;
+            int chunk = seconds / n;
             auto_ptr<DBClientCursor> cursor = query(t, BSONObj(), chunk, chunk*t);
             cursor->itcount();
         }
@@ -431,7 +435,7 @@ namespace Queries{
     struct HundredTableScans{
         void reset() {
             clearDB();
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSONObj());
             }
             getLastError();
@@ -447,14 +451,14 @@ namespace Queries{
     struct IntID{
         void reset() {
             clearDB();
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("_id" << i));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int chunk = iterations / n;
+            int chunk = seconds / n;
             auto_ptr<DBClientCursor> cursor = query(t, BSONObj(), chunk, chunk*t);
             cursor->itcount();
         }
@@ -463,14 +467,14 @@ namespace Queries{
     struct IntIDRange{
         void reset() {
             clearDB();
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("_id" << i));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int chunk = iterations / n;
+            int chunk = seconds / n;
             auto_ptr<DBClientCursor> cursor = query(t, BSON("_id" << GTE << chunk*t << LT << chunk*(t+1)));
             cursor->itcount();
         }
@@ -479,15 +483,15 @@ namespace Queries{
     struct IntIDFindOne{
         void reset() {
             clearDB();
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("_id" << i));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 findOne(t, BSON("_id" << base + i));
             }
         }
@@ -497,14 +501,14 @@ namespace Queries{
         void reset() {
             clearDB();
             ensureIndex(-1, BSON("x" << 1));
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("x" << i));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int chunk = iterations / n;
+            int chunk = seconds / n;
             auto_ptr<DBClientCursor> cursor = query(t, BSONObj(), chunk, chunk*t);
             cursor->itcount();
         }
@@ -514,14 +518,14 @@ namespace Queries{
         void reset() {
             clearDB();
             ensureIndex(-1, BSON("x" << 1));
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("x" << i));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int chunk = iterations / n;
+            int chunk = seconds / n;
             auto_ptr<DBClientCursor> cursor = query(t, BSON("x" << GTE << chunk*t << LT << chunk*(t+1)));
             cursor->itcount();
         }
@@ -531,15 +535,15 @@ namespace Queries{
         void reset() {
             clearDB();
             ensureIndex(-1, BSON("x" << 1));
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("x" << i));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 findOne(t, BSON("x" << base + i));
             }
         }
@@ -553,14 +557,14 @@ namespace Queries{
         void reset() {
             clearDB();
             ensureIndex(-1, BSON("x" << 1));
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("x" << BSONObjBuilder::numStr(i)));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            for (int i=0; i < iterations / n / 100; i++){
+            for (int i=0; i < seconds / n / 100; i++){
                 for (int j=0; j<100; j++){
                     BSONObjBuilder b;
                     b.appendRegex("x", nums[j]);
@@ -576,16 +580,16 @@ namespace Queries{
             clearDB();
             ensureIndex(-1, BSON("x" << 1));
             ensureIndex(-1, BSON("y" << 1));
-            for (int i=0; i < iterations; i++){
-                insert(-1, BSON("x" << i << "y" << (iterations-i)));
+            for (int i=0; i < seconds; i++){
+                insert(-1, BSON("x" << i << "y" << (seconds-i)));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
-                findOne(t, BSON("x" << base + i << "y" << (iterations-(base+i))));
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
+                findOne(t, BSON("x" << base + i << "y" << (seconds-(base+i))));
             }
         }
     };
@@ -595,15 +599,15 @@ namespace Queries{
             clearDB();
             ensureIndex(-1, BSON("x" << 1));
             ensureIndex(-1, BSON("y" << 1));
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("x" << i << "y" << (i%13)));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 findOne(t, BSON("x" << base + i << "y" << ((base+i)%13)));
             }
         }
@@ -614,15 +618,15 @@ namespace Queries{
             clearDB();
             ensureIndex(-1, BSON("x" << 1));
             ensureIndex(-1, BSON("y" << 1));
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("x" << (i%13) << "y" << i));
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 findOne(t, BSON("x" << ((base+i)%13) << "y" << base+i));
             }
         }
@@ -632,15 +636,15 @@ namespace Queries{
             clearDB();
             ensureIndex(-1, BSON("x" << 1));
             ensureIndex(-1, BSON("y" << 1));
-            for (int i=0; i < iterations; i++){
+            for (int i=0; i < seconds; i++){
                 insert(-1, BSON("x" << (i%503) << "y" << (i%509))); // both are prime
             }
             getLastError();
         }
 
         void run(int t, int n){
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
+            int base = t * (seconds/n);
+            for (int i=0; i < seconds / n; i++){
                 findOne(t, BSON("x" << ((base+i)%503) << "y" << ((base+i)%509)));
             }
         }
@@ -653,10 +657,16 @@ namespace FSTests {
     struct LookupUserByID {
         void reset() { }
 
-        void run(int t, int n){
-            int base = t * (iterations/n);
-            for (int i=0; i < iterations / n; i++){
-                findOne(t, BSON("_id" << base + i));
+        void run(int threadId, int seconds){
+            int startTime = time(NULL);
+            int iters = 0;
+            while (time(NULL) < (startTime + seconds)) {
+                findOne(threadId, BSON("_id" << threadId + iters));
+                ++iters;
+            }
+            {
+              boost::interprocess::scoped_lock<boost::signals2::mutex> lk(_mutex);
+              iterations += iters;
             }
         }
     };
@@ -710,7 +720,7 @@ namespace{
 
 int main(int argc, const char **argv){
     if (argc < 3){
-        cout << argv[0] << " [host:port] [iterations] [multidb (1 or 0)]" << endl;
+        cout << argv[0] << " [host:port] [seconds] [multidb (1 or 0)]" << endl;
         return 1;
     }
 
@@ -723,7 +733,7 @@ int main(int argc, const char **argv){
         }
     }
 
-    iterations = atoi(argv[2]);
+    seconds = atoi(argv[2]);
 
     if (argc > 3)
         multi_db = (argv[3][0] == '1');

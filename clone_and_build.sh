@@ -7,9 +7,13 @@ mkdir -p perfrunner
 cd perfrunner
 if [ -d mongo ]; then
   cd mongo
-  git checkout HEAD shell/mongo_vstudio.cpp
-  git checkout r2.0.5-fs
-  git pull
+  #git stash
+  # git checkout HEAD shell/mongo_vstudio.cpp
+  #git checkout r2.0.5-fs
+  #git pull
+  #if [ `git stash list | wc -l` != "0" ]; then
+  #  git stash pop
+  #fi
 else
   git clone git@github.com:foursquare/mongo.git
   cd mongo
@@ -21,7 +25,7 @@ cd ..
 
 
 if ! [ -d mongo-perf ]; then
-  git clone git@github.com:foursquare/mongo.git
+  git clone git@github.com:foursquare/mongo-perf.git
 fi
 cd mongo-perf
 git pull

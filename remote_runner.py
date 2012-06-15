@@ -38,16 +38,23 @@ mongodb_git="nolaunch"
 if opts.label != '<git version>':
     mongodb_git = opts.label
 
-benchmark_results=''
+remote_builds = []
+for r in opts.remote:
+  scp = subprocess.Popen(['scp', './clone_and_build.sh', '%s:' % r])
+  if scp.wait() != 0:
+    raise Exception('Couldn\'t scp benchmark to %s' % r)
+  print 'scp\'d bechmark to %s' % r
+  remote_builds.append([r, subprocess.Popen(['ssh', r, './clone_and_build.sh'])])
+for (rh, rb) in remote_builds:
+  if rb.wait() != 0:
+    raise Exception('Couldn\'t do remote build on %s :(' % rh)
+    [ x.terminate() for x in remote_builds ]
 
 remote_runs = []
 for r in opts.remote:
-  print os.getcwd()
-  scp = subprocess.Popen(['scp', './benchmark', '%s:' % r])
-  if scp.wait() != 0:
-    raise Error('Couldn\'t scp benchmark to %s' % r)
-  print 'scp\'d bechmark to %s' % r
-  remote_runs.append(subprocess.Popen(['ssh', r, './benchmark', opts.hostport, opts.iterations, '1' if opts.multidb else '0'], stdout=subprocess.PIPE))
+  remote_runs.append(subprocess.Popen(['ssh', r, './perfrunner/mongo-perf/benchmark', opts.hostport, opts.iterations, '1' if opts.multidb else '0'], stdout=subprocess.PIPE))
+
+benchmark_results=''
 for rr in remote_runs:
   ret = rr.communicate()[0]
   benchmark_results = benchmark_results + '\n' + ret
