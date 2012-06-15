@@ -160,7 +160,7 @@ namespace {
                         startTime = boost::posix_time::microsec_clock::universal_time();
                         launch_subthreads(nthreads, test, seconds);
                         endTime = boost::posix_time::microsec_clock::universal_time();
-                        double micros = (endTime-startTime).total_microseconds() / 1000000.0;
+                        double micros = (endTime-startTime).total_microseconds() / 1000001.0;
 
                         if (nthreads == 1)
                             one_micros = micros;
@@ -663,7 +663,7 @@ namespace FSTests {
             boost::posix_time::ptime endTime = startTime + boost::posix_time::seconds(seconds);
             int iters = 0;
             while (boost::posix_time::microsec_clock::universal_time() < endTime) {
-                findOne(threadId, BSON("_id" << threadId + iters));
+                findOne(threadId, BSON("_id" << 19455489)); //threadId + iters));
                 ++iters;
             }
             {
