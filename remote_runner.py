@@ -20,6 +20,7 @@ optparser.add_option('-s', '--mongos', dest='mongos', help='send all requests th
 optparser.add_option('-m', '--multidb', dest='multidb', help='use a separate db for each connection', action='store_true', default=False)
 optparser.add_option('-l', '--label', dest='label', help='name to record', type='string', default='<git version>')
 optparser.add_option('-r', '--remote', dest='remote', help='remote machine to scp and run on', action='append')
+optparser.add_option('-b', '--build', dest='build', help='do build', action='store_true', default=False)
 
 (opts, versions) = optparser.parse_args()
 if not versions:
@@ -38,17 +39,18 @@ mongodb_git="nolaunch"
 if opts.label != '<git version>':
     mongodb_git = opts.label
 
-remote_builds = []
-for r in opts.remote:
-  scp = subprocess.Popen(['scp', './clone_and_build.sh', '%s:' % r])
-  if scp.wait() != 0:
-    raise Exception('Couldn\'t scp benchmark to %s' % r)
-  print 'scp\'d bechmark to %s' % r
-  remote_builds.append([r, subprocess.Popen(['ssh', r, './clone_and_build.sh'])])
-for (rh, rb) in remote_builds:
-  if rb.wait() != 0:
-    raise Exception('Couldn\'t do remote build on %s :(' % rh)
-    [ x.terminate() for x in remote_builds ]
+if opts.build:
+  remote_builds = []
+  for r in opts.remote:
+    scp = subprocess.Popen(['scp', './clone_and_build.sh', '%s:' % r])
+    if scp.wait() != 0:
+      raise Exception('Couldn\'t scp benchmark to %s' % r)
+    print 'scp\'d bechmark to %s' % r
+    remote_builds.append([r, subprocess.Popen(['ssh', r, './clone_and_build.sh'])])
+  for (rh, rb) in remote_builds:
+    if rb.wait() != 0:
+      raise Exception('Couldn\'t do remote build on %s :(' % rh)
+      [ x.terminate() for x in remote_builds ]
 
 remote_runs = []
 for r in opts.remote:
@@ -71,7 +73,7 @@ except pymongo.errors.ConnectionFailure:
 
 
 for line in benchmark_results.split('\n'):
-    if line:
+    if line and not ('DBClientConnection::call' in line) and not ('mongo::MsgAssertionException' in line):
         print line
         obj = json.loads(line, object_hook=object_hook)
         obj['mongodb_version'] = mongodb_version

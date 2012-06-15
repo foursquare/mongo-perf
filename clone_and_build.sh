@@ -19,8 +19,8 @@ else
   cd mongo
   git checkout r2.0.5-fs
 fi
-scons --full all
-scons --full mongoclient
+#scons --full all
+#scons --full mongoclient
 cd ..
 
 

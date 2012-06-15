@@ -658,9 +658,10 @@ namespace FSTests {
         void reset() { }
 
         void run(int threadId, int seconds){
-            int startTime = time(NULL);
+            boost::posix_time::ptime startTime = boost::posix_time::microsec_clock::universal_time();
+            boost::posix_time::ptime endTime = startTime + (seconds * 1000 * 1000);
             int iters = 0;
-            while (time(NULL) < (startTime + seconds)) {
+            while (boost::posix_time::microsec_clock::universal_time() < endTime) {
                 findOne(threadId, BSON("_id" << threadId + iters));
                 ++iters;
             }
