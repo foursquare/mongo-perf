@@ -71,6 +71,7 @@ if opts.label != '<git version>':
 benchmark_results=''
 try:
     multidb = '1' if opts.multidb else '0'
+    print "./benchmark %s %s %s" % (opts.port, opts.iterations, multidb)
     benchmark = subprocess.Popen(['./benchmark', opts.port, opts.iterations, multidb], stdout=subprocess.PIPE)
     benchmark_results = benchmark.communicate()[0]
     time.sleep(1) # wait for server to clean up connections
@@ -91,7 +92,7 @@ except pymongo.errors.ConnectionFailure:
 
 
 for line in benchmark_results.split('\n'):
-    if line:
+    if line and not ('DBClientConnection::call' in line) and not ('mongo::MsgAssertionException' in line):
         print line
         obj = json.loads(line, object_hook=object_hook)
         obj['mongodb_version'] = mongodb_version
@@ -99,7 +100,7 @@ for line in benchmark_results.split('\n'):
         obj['mongodb_git'] = mongodb_git
         obj['ran_at'] = datetime.datetime.now()
         if connection: results.insert(obj)
-        
+
 
 
 
