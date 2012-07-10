@@ -21,6 +21,7 @@ optparser.add_option('-m', '--multidb', dest='multidb', help='use a separate db 
 optparser.add_option('-l', '--label', dest='label', help='name to record', type='string', default='<git version>')
 optparser.add_option('-r', '--remote', dest='remote', help='remote machine to scp and run on', action='append')
 optparser.add_option('-b', '--build', dest='build', help='do build', action='store_true', default=False)
+optparser.add_option('-t', '--run', dest='run', help='do run', action='store_true', default=False)
 
 (opts, versions) = optparser.parse_args()
 if not versions:
@@ -52,37 +53,33 @@ if opts.build:
       raise Exception('Couldn\'t do remote build on %s :(' % rh)
       [ x.terminate() for x in remote_builds ]
 
-remote_runs = []
-for r in opts.remote:
-  remote_runs.append(subprocess.Popen(['ssh', r, './perfrunner/mongo-perf/benchmark', opts.hostport, opts.iterations, '1' if opts.multidb else '0'], stdout=subprocess.PIPE))
+if opts.run:
+  remote_runs = []
+  for r in opts.remote:
+    remote_runs.append(subprocess.Popen(['ssh', r, './perfrunner/mongo-perf/benchmark', opts.hostport, opts.iterations, '1' if opts.multidb else '0'], stdout=subprocess.PIPE))
 
-benchmark_results=''
-for rr in remote_runs:
-  ret = rr.communicate()[0]
-  benchmark_results = benchmark_results + '\n' + ret
+  benchmark_results=''
+  for rr in remote_runs:
+    ret = rr.communicate()[0]
+    benchmark_results = benchmark_results + '\n' + ret
 
-connection = None
-try:
-    connection = pymongo.Connection(host = opts.results_hostport)
-    results = connection.bench_results.raw
-    results.ensure_index('mongodb_git')
-    results.ensure_index('name')
-    results.remove({'mongodb_git': mongodb_git})
-except pymongo.errors.ConnectionFailure:
-    pass
-
-
-for line in benchmark_results.split('\n'):
-    if line and not ('DBClientConnection::call' in line) and not ('mongo::MsgAssertionException' in line):
-        print line
-        obj = json.loads(line, object_hook=object_hook)
-        obj['mongodb_version'] = mongodb_version
-        obj['mongodb_date'] = mongodb_date
-        obj['mongodb_git'] = mongodb_git
-        obj['ran_at'] = datetime.datetime.now()
-        if connection: results.insert(obj)
+  connection = None
+  try:
+      connection = pymongo.Connection(host = opts.results_hostport)
+      results = connection.bench_results.raw
+      results.ensure_index('mongodb_git')
+      results.ensure_index('name')
+      results.remove({'mongodb_git': mongodb_git})
+  except pymongo.errors.ConnectionFailure:
+      pass
 
 
-
-
-
+  for line in benchmark_results.split('\n'):
+      if line and not ('DBClientConnection::call' in line) and not ('mongo::MsgAssertionException' in line):
+          print line
+          obj = json.loads(line, object_hook=object_hook)
+          obj['mongodb_version'] = mongodb_version
+          obj['mongodb_date'] = mongodb_date
+          obj['mongodb_git'] = mongodb_git
+          obj['ran_at'] = datetime.datetime.now()
+          if connection: results.insert(obj)

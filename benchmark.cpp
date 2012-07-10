@@ -22,7 +22,7 @@ using namespace mongo;
 
 
 namespace {
-    const int thread_nums[] = {100, 250, 500};
+    const int thread_nums[] = {100}; //, 250, 500};
     const int max_threads = 1000;
     // Global connections
     DBClientConnection _conn[max_threads];
