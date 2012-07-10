@@ -6,6 +6,7 @@ import sys
 import json
 
 db = pymongo.Connection('dev-12', 27109)['bench_results']
+#db = pymongo.Connection('localhost', 27017)['bench_results']
 
 @route('/static/:filename#.*#')
 def static_file(filename):

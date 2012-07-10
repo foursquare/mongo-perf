@@ -22,8 +22,8 @@ using namespace mongo;
 
 
 namespace {
-    const int thread_nums[] = {100}; //, 250, 500};
-    const int max_threads = 1000;
+    const int thread_nums[] = {10, 20, 50, 100, 250, 500};
+    const int max_threads = 501;
     // Global connections
     DBClientConnection _conn[max_threads];
 
@@ -1148,7 +1148,7 @@ namespace{
           add<FSTests::LookupUserByID>();
           add<FSTests::LookupUserByIDs>();
           add<FSTests::LookupUserByIDsNoExhaust>();
-          add<FSTests::LookupUVAByUVDoubleInQuery>();
+          //add<FSTests::LookupUVAByUVDoubleInQuery>();
         /*
             //add< Overhead::DoNothing >();
 
