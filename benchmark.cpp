@@ -1148,7 +1148,7 @@ namespace{
           add<FSTests::LookupUserByID>();
           add<FSTests::LookupUserByIDs>();
           add<FSTests::LookupUserByIDsNoExhaust>();
-          //add<FSTests::LookupUVAByUVDoubleInQuery>();
+          add<FSTests::LookupUVAByUVDoubleInQuery>();
         /*
             //add< Overhead::DoNothing >();
 
